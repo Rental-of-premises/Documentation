@@ -15,7 +15,7 @@
 
 ## Документация
 - [Архитектура](./architecture.md)
-- [API](./api.md)
+- [API](./endpoints.md)
 
 ## Технологии
 - Node.js, Express, PostgreSQL, React, Git
