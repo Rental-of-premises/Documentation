@@ -2,322 +2,891 @@ openapi: 3.0.3
 info:
   title: Rental of Premises API
   description: |
-    Backend API for managing rental premises. Currently in active development.
-    Features:
-    - User management (partial)
-    - Apartment/Property management
-    - Booking system
-    - Payments processing
-    - Reviews & ratings
-    - Status tracking
-
-    **Authentication:** JWT tokens (planned, currently endpoints may be open)
-  version: 0.2.0
+    API для системы аренды помещений (Office Space)
+    
+    ## Возможности:
+    - Регистрация и аутентификация пользователей (с подтверждением email)
+    - Управление помещениями (создание, редактирование, удаление)
+    - Бронирование помещений по часам
+    - Система отзывов и рейтингов
+    - Управление профилем пользователя (имя, аватар)
+    
+  version: 1.0.0
   contact:
-    name: Alice & Albina
-    url: https://github.com/Rental-of-premises/BackEnd
+    name: API Support
   license:
-    name: Proprietary
+    name: MIT
 
 servers:
-  - url: http://localhost:3000/api
-    description: Local development server (default)
-  - url: https://api.rental-premises.example.com/v1
-    description: Production server (placeholder)
+  - url: http://localhost:3000
+    description: Local development server
+  - url: https://team3.verstack.ru
+    description: Production server
 
 tags:
-  - name: Health
-    description: Service health checks
-  - name: Users
-    description: User management (in progress)
-  - name: Apartments
-    description: Property and apartment management
-  - name: Bookings
-    description: Booking reservations
-  - name: Payments
-    description: Payment transactions
-  - name: Reviews
-    description: User reviews and ratings
-  - name: Statuses
-    description: Status tracking for bookings/properties
   - name: Auth
-    description: Authentication and authorization (JWT - planned)
+    description: Аутентификация и регистрация
+  - name: Users
+    description: Управление пользователями (публичные)
+  - name: Account
+    description: Настройки аккаунта (защищённые)
+  - name: Apartments
+    description: Публичные endpoints для помещений
+  - name: My Apartments
+    description: Управление своими помещениями (защищённые)
+  - name: Bookings
+    description: Бронирования
+  - name: My Bookings
+    description: Управление своими бронированиями (защищённые)
+  - name: Reviews
+    description: Отзывы о помещениях
+  - name: Amenities
+    description: Удобства помещений
+  - name: Files
+    description: Статические файлы
 
+paths:
+  # ============================================
+  # AUTH
+  # ============================================
+  /api/auth/sign-up:
+    post:
+      tags: [Auth]
+      summary: Регистрация пользователя
+      description: Создаёт нового пользователя и отправляет письмо с подтверждением email
+      operationId: signUp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Пользователь успешно зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Неверный запрос (валидация)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Пользователь с таким email уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/sign-in:
+    post:
+      tags: [Auth]
+      summary: Вход в аккаунт
+      operationId: signIn
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешный вход (устанавливается cookie)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Неверный email или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/confirm-email:
+    get:
+      tags: [Auth]
+      summary: Подтверждение email по токену
+      operationId: confirmEmail
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Токен подтверждения из email
+      responses:
+        '200':
+          description: Email подтверждён
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Email успешно подтверждён
+        '400':
+          description: Неверный или истёкший токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Выход из аккаунта
+      operationId: logout
+      security:
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Успешный выход
+        '401':
+          description: Неавторизован
+
+  /api/auth/delete:
+    delete:
+      tags: [Auth]
+      summary: Удалить аккаунт
+      operationId: deleteAccount
+      security:
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Аккаунт удалён
+        '401':
+          description: Неавторизован
+        '500':
+          description: Ошибка сервера
+
+  # ============================================
+  # USERS (PUBLIC)
+  # ============================================
+  /api/users/{id}:
+    get:
+      tags: [Users]
+      summary: Получить публичные данные пользователя
+      operationId: getUserById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPublic'
+        '404':
+          description: Пользователь не найден
+
+  # ============================================
+  # ACCOUNT (PROTECTED)
+  # ============================================
+  /api/account/settings/profile/change-avatar:
+    post:
+      tags: [Account]
+      summary: Загрузить/обновить аватар
+      operationId: uploadAvatar
+      security:
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+                  description: Изображение JPG/PNG, макс. 10MB
+      responses:
+        '200':
+          description: Аватар загружен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  avatar:
+                    type: string
+                    description: URL или base64 аватара
+        '400':
+          description: Ошибка валидации файла
+        '401':
+          description: Неавторизован
+
+  /api/account/settings/profile/change-name:
+    patch:
+      tags: [Account]
+      summary: Изменить имя пользователя
+      operationId: changeName
+      security:
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 2
+                  maxLength: 50
+      responses:
+        '200':
+          description: Имя изменено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  name:
+                    type: string
+        '400':
+          description: Ошибка валидации
+        '401':
+          description: Неавторизован
+
+  # ============================================
+  # APARTMENTS (PUBLIC)
+  # ============================================
+  /api/apartments:
+    get:
+      tags: [Apartments]
+      summary: Получить список всех активных помещений
+      operationId: getApartments
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: min_price
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+        - name: max_price
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+        - name: capacity
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: metro
+          in: query
+          schema:
+            type: string
+        - name: amenities
+          in: query
+          schema:
+            type: array
+            items:
+              type: integer
+          style: form
+          explode: false
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Apartment'
+
+  /api/apartments/{id}:
+    get:
+      tags: [Apartments]
+      summary: Получить помещение по ID
+      operationId: getApartmentById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApartmentDetail'
+        '404':
+          description: Помещение не найдено
+
+  /api/apartments/{id}/reviews:
+    get:
+      tags: [Reviews]
+      summary: Получить все отзывы о помещении
+      operationId: getReviewsByApartment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Review'
+
+  /api/apartments/{id}/calendar:
+    get:
+      tags: [Bookings]
+      summary: Получить календарь бронирований помещения
+      operationId: getBookingsByApartment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Booking'
+
+  /api/apartments/{id}/new-review:
+    post:
+      tags: [Reviews]
+      summary: Создать отзыв о помещении
+      description: Пользователь должен иметь завершённое бронирование этого помещения
+      operationId: createReview
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReviewRequest'
+      responses:
+        '201':
+          description: Отзыв создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '400':
+          description: Ошибка валидации
+        '401':
+          description: Неавторизован
+        '403':
+          description: Нет права оставлять отзыв
+
+  # ============================================
+  # AMENITIES
+  # ============================================
+  /api/amenities:
+    get:
+      tags: [Amenities]
+      summary: Получить список всех удобств
+      operationId: getAmenities
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Amenity'
+
+  /api/amenity/{id}:
+    get:
+      tags: [Amenities]
+      summary: Получить удобство по ID
+      operationId: getAmenityById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Amenity'
+        '404':
+          description: Удобство не найдено
+
+  # ============================================
+  # BOOKINGS (PUBLIC)
+  # ============================================
+  /api/bookings/{id}:
+    get:
+      tags: [Bookings]
+      summary: Получить бронирование по ID
+      operationId: getBookingById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '404':
+          description: Бронирование не найдено
+
+  # ============================================
+  # MY APARTMENTS (PROTECTED)
+  # ============================================
+  /api/account/my-apartments:
+    get:
+      tags: [My Apartments]
+      summary: Получить список своих помещений
+      operationId: getMyApartments
+      security:
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Apartment'
+
+  /api/account/new-apartment:
+    post:
+      tags: [My Apartments]
+      summary: Создать новое помещение
+      operationId: createApartment
+      security:
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateApartmentRequest'
+      responses:
+        '201':
+          description: Помещение создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Apartment'
+        '400':
+          description: Ошибка валидации
+        '401':
+          description: Неавторизован
+
+  /api/account/apartments/{id}/edit:
+    patch:
+      tags: [My Apartments]
+      summary: Редактировать помещение
+      operationId: updateApartment
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateApartmentRequest'
+      responses:
+        '200':
+          description: Помещение обновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Apartment'
+        '400':
+          description: Ошибка валидации
+        '401':
+          description: Неавторизован
+        '403':
+          description: Нет прав на это помещение
+        '404':
+          description: Помещение не найдено
+
+  /api/account/apartments/{id}/delete:
+    delete:
+      tags: [My Apartments]
+      summary: Удалить помещение
+      operationId: deleteApartment
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Помещение удалено
+        '401':
+          description: Неавторизован
+        '403':
+          description: Нет прав
+        '404':
+          description: Не найдено
+
+  /api/account/apartments/{id}/upload-images:
+    post:
+      tags: [My Apartments]
+      summary: Загрузить изображения помещения
+      operationId: uploadApartmentImages
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                images:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  maxItems: 10
+      responses:
+        '200':
+          description: Изображения загружены
+        '400':
+          description: Ошибка загрузки
+        '401':
+          description: Неавторизован
+
+  /api/account/apartments/{id}/update-images:
+    patch:
+      tags: [My Apartments]
+      summary: Обновить изображения (удалить конкретные)
+      operationId: updateApartmentImages
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                delete_ids:
+                  type: array
+                  items:
+                    type: integer
+      responses:
+        '200':
+          description: Изображения обновлены
+        '401':
+          description: Неавторизован
+
+  /api/account/apartments/{id}/delete-images:
+    delete:
+      tags: [My Apartments]
+      summary: Удалить все изображения помещения
+      operationId: deleteAllApartmentImages
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Все изображения удалены
+        '401':
+          description: Неавторизован
+
+  # ============================================
+  # MY BOOKINGS (PROTECTED)
+  # ============================================
+  /api/account/my-bookings:
+    get:
+      tags: [My Bookings]
+      summary: Получить свои бронирования
+      operationId: getMyBookings
+      security:
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Booking'
+
+  /api/account/new-booking:
+    post:
+      tags: [My Bookings]
+      summary: Создать новое бронирование
+      description: Создаёт бронирование со статусом 'waiting' (ожидает подтверждения владельца)
+      operationId: createBooking
+      security:
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+      responses:
+        '201':
+          description: Бронирование создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '400':
+          description: Ошибка валидации (пересечение с существующими)
+        '401':
+          description: Неавторизован
+
+  /api/account/my-bookings/{id}/cancel:
+    patch:
+      tags: [My Bookings]
+      summary: Отменить своё бронирование
+      operationId: cancelBooking
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Бронирование отменено
+        '401':
+          description: Неавторизован
+        '403':
+          description: Нельзя отменить (уже началось или нет прав)
+        '404':
+          description: Не найдено
+
+  /api/account/bookings/{id}/confirm:
+    patch:
+      tags: [My Bookings]
+      summary: Подтвердить бронирование (для владельца помещения)
+      operationId: confirmBookingBySeller
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Бронирование подтверждено
+        '401':
+          description: Неавторизован
+        '403':
+          description: Нет прав на это помещение
+        '404':
+          description: Не найдено
+
+  /api/account/bookings/{id}/reject:
+    patch:
+      tags: [My Bookings]
+      summary: Отклонить бронирование (для владельца помещения)
+      operationId: rejectBookingBySeller
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Бронирование отклонено
+        '401':
+          description: Неавторизован
+        '403':
+          description: Нет прав
+        '404':
+          description: Не найдено
+
+  /api/account/bookings:
+    get:
+      tags: [My Bookings]
+      summary: Получить все бронирования своих помещений
+      operationId: getBookingsForMyApartments
+      security:
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Booking'
+
+  /api/account/delete-review/{id}:
+    delete:
+      tags: [Reviews]
+      summary: Удалить свой отзыв
+      operationId: deleteReview
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Отзыв удалён
+        '401':
+          description: Неавторизован
+        '403':
+          description: Нет прав
+        '404':
+          description: Не найден
+
+  # ============================================
+  # FILES (PUBLIC)
+  # ============================================
+  /uploads/{path}:
+    get:
+      tags: [Files]
+      summary: Получить статический файл
+      operationId: getUploadedFile
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Файл
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Файл не найден
+
+# ============================================
+# COMPONENTS
+# ============================================
 components:
   securitySchemes:
-    BearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: JWT token authentication (to be implemented)
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: session_token
+      description: Сессионная cookie для аутентификации
 
   schemas:
-    # Core Entities
-    User:
+    # ---- REQUESTS ----
+    RegisterRequest:
       type: object
+      required: [name, email, password]
       properties:
-        id:
-          type: integer
-          format: int64
-          example: 1
+        name:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: Аля
         email:
           type: string
           format: email
-          example: "user@example.com"
-        full_name:
-          type: string
-          example: "John Doe"
-        phone:
-          type: string
-          example: "+1234567890"
-        role:
-          type: string
-          enum: [tenant, landlord, admin]
-          default: tenant
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-    UserCreate:
-      type: object
-      required: [email, full_name, password]
-      properties:
-        email:
-          type: string
-          format: email
-        full_name:
-          type: string
+          example: user@example.com
         password:
           type: string
           format: password
           minLength: 6
-        phone:
-          type: string
-    UserUpdate:
-      type: object
-      properties:
-        full_name:
-          type: string
-        phone:
-          type: string
-        email:
-          type: string
-          format: email
+          example: mypassword123
 
-    Apartment:
-      type: object
-      properties:
-        id:
-          type: integer
-          format: int64
-        landlord_id:
-          type: integer
-          format: int64
-        title:
-          type: string
-          example: "Cozy Downtown Apartment"
-        description:
-          type: string
-        address:
-          type: string
-        city:
-          type: string
-        price_per_night:
-          type: number
-          format: float
-        max_guests:
-          type: integer
-        bedrooms:
-          type: integer
-        beds:
-          type: integer
-        bathrooms:
-          type: number
-        amenities:
-          type: array
-          items:
-            type: string
-          example: ["wifi", "kitchen", "parking"]
-        images:
-          type: array
-          items:
-            type: string
-            format: uri
-        status:
-          type: string
-          enum: [active, inactive, maintenance]
-          default: active
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-    ApartmentCreate:
-      type: object
-      required: [title, address, price_per_night]
-      properties:
-        landlord_id:
-          type: integer
-        title:
-          type: string
-        description:
-          type: string
-        address:
-          type: string
-        city:
-          type: string
-        price_per_night:
-          type: number
-        max_guests:
-          type: integer
-        bedrooms:
-          type: integer
-        beds:
-          type: integer
-        bathrooms:
-          type: number
-        amenities:
-          type: array
-          items:
-            type: string
-
-    Booking:
-      type: object
-      properties:
-        id:
-          type: integer
-        user_id:
-          type: integer
-        apartment_id:
-          type: integer
-        check_in_date:
-          type: string
-          format: date
-        check_out_date:
-          type: string
-          format: date
-        total_price:
-          type: number
-        status:
-          type: string
-          enum: [pending, confirmed, cancelled, completed]
-        guests_count:
-          type: integer
-        special_requests:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-    BookingCreate:
-      type: object
-      required: [apartment_id, check_in_date, check_out_date, guests_count]
-      properties:
-        apartment_id:
-          type: integer
-        check_in_date:
-          type: string
-          format: date
-        check_out_date:
-          type: string
-          format: date
-        guests_count:
-          type: integer
-        special_requests:
-          type: string
-
-    Payment:
-      type: object
-      properties:
-        id:
-          type: integer
-        booking_id:
-          type: integer
-        user_id:
-          type: integer
-        amount:
-          type: number
-        currency:
-          type: string
-          default: "USD"
-        status:
-          type: string
-          enum: [pending, completed, failed, refunded]
-        payment_method:
-          type: string
-          enum: [credit_card, paypal, bank_transfer]
-        transaction_id:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-
-    Review:
-      type: object
-      properties:
-        id:
-          type: integer
-        user_id:
-          type: integer
-        apartment_id:
-          type: integer
-        booking_id:
-          type: integer
-        rating:
-          type: integer
-          minimum: 1
-          maximum: 5
-        comment:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-
-    Status:
-      type: object
-      properties:
-        id:
-          type: integer
-        entity_type:
-          type: string
-          enum: [booking, apartment, payment]
-        entity_id:
-          type: integer
-        status:
-          type: string
-        previous_status:
-          type: string
-        changed_by:
-          type: integer
-        notes:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-
-    # Common Responses
-    Error:
-      type: object
-      properties:
-        error:
-          type: string
-        message:
-          type: string
-        status_code:
-          type: integer
-    Success:
-      type: object
-      properties:
-        success:
-          type: boolean
-        message:
-          type: string
-        data:
-          type: object
-
-    # Authentication
     LoginRequest:
       type: object
       required: [email, password]
@@ -328,741 +897,244 @@ components:
         password:
           type: string
           format: password
-    LoginResponse:
+
+    CreateApartmentRequest:
+      type: object
+      required: [name, address, metro, price_per_hour, capacity]
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 2000
+        address:
+          type: string
+        metro:
+          type: string
+        price_per_hour:
+          type: integer
+          minimum: 50
+        capacity:
+          type: integer
+          minimum: 1
+          maximum: 200
+        amenities:
+          type: array
+          items:
+            type: integer
+        images:
+          type: array
+          items:
+            type: string
+            format: binary
+          maxItems: 10
+
+    UpdateApartmentRequest:
       type: object
       properties:
-        token:
+        name:
           type: string
-          description: JWT access token
+        description:
+          type: string
+        address:
+          type: string
+        metro:
+          type: string
+        price_per_hour:
+          type: integer
+          minimum: 50
+        capacity:
+          type: integer
+          minimum: 1
+        amenities:
+          type: array
+          items:
+            type: integer
+        is_active:
+          type: boolean
+
+    CreateBookingRequest:
+      type: object
+      required: [apartment_id, time_from, time_to]
+      properties:
+        apartment_id:
+          type: integer
+          format: int64
+        time_from:
+          type: string
+          format: date-time
+          description: ISO 8601, начало бронирования
+          example: "2026-06-22T10:00:00Z"
+        time_to:
+          type: string
+          format: date-time
+          description: ISO 8601, конец бронирования
+          example: "2026-06-22T14:00:00Z"
+
+    CreateReviewRequest:
+      type: object
+      required: [stars, comment]
+      properties:
+        stars:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          minLength: 1
+          maxLength: 1000
+
+    # ---- RESPONSES ----
+    AuthResponse:
+      type: object
+      properties:
+        message:
+          type: string
         user:
-          $ref: '#/components/schemas/User'
+          $ref: '#/components/schemas/UserPublic'
 
-  parameters:
-    IdParam:
-      name: id
-      in: path
-      required: true
-      schema:
-        type: integer
-        format: int64
-      description: The unique identifier
-    PageParam:
-      name: page
-      in: query
-      schema:
-        type: integer
-        default: 1
-      description: Page number for pagination
-    LimitParam:
-      name: limit
-      in: query
-      schema:
-        type: integer
-        default: 20
-        maximum: 100
-      description: Items per page
-    StatusParam:
-      name: status
-      in: query
-      schema:
-        type: string
-      description: Filter by status
+    UserPublic:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        avatar:
+          type: object
+          nullable: true
+          properties:
+            image_data:
+              type: string
+              description: Base64 или URL аватара
 
-paths:
-  # Health Check
-  /health:
-    get:
-      tags: [Health]
-      summary: Health check endpoint
-      operationId: healthCheck
-      responses:
-        '200':
-          description: Service is healthy
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: "ok"
-                  timestamp:
-                    type: string
-                    format: date-time
+    Amenity:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          example: Wi-Fi
 
-  # Authentication (Planned)
-  /auth/login:
-    post:
-      tags: [Auth]
-      summary: Authenticate user and get JWT token (planned)
-      operationId: login
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LoginRequest'
-      responses:
-        '200':
-          description: Successful login
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LoginResponse'
-        '401':
-          description: Invalid credentials
-        '501':
-          description: Not implemented yet (JWT in progress)
-  /auth/register:
-    post:
-      tags: [Auth]
-      summary: Register a new user (planned)
-      operationId: register
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UserCreate'
-      responses:
-        '201':
-          description: User created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-        '400':
-          description: Invalid input
-        '409':
-          description: Email already exists
-        '501':
-          description: Not fully implemented
+    Apartment:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        capacity:
+          type: integer
+        price_per_hour:
+          type: integer
+        metro:
+          type: string
+          nullable: true
+        address:
+          type: string
+        is_active:
+          type: boolean
+          default: true
+        created_at:
+          type: string
+          format: date-time
+        images:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              image_url:
+                type: string
+        amenities:
+          type: array
+          items:
+            $ref: '#/components/schemas/Amenity'
+        owner_id:
+          type: integer
+          format: int64
 
-  # Users
-  /users:
-    get:
-      tags: [Users]
-      summary: List all users (partial)
-      operationId: listUsers
-      parameters:
-        - $ref: '#/components/parameters/PageParam'
-        - $ref: '#/components/parameters/LimitParam'
-      responses:
-        '200':
-          description: List of users
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  users:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/User'
-                  total:
-                    type: integer
-                  page:
-                    type: integer
-        '501':
-          description: Endpoint partially implemented
-    post:
-      tags: [Users]
-      summary: Create a new user
-      operationId: createUser
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UserCreate'
-      responses:
-        '201':
-          description: User created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-        '400':
-          description: Invalid input
-        '409':
-          description: User already exists
+    ApartmentDetail:
+      allOf:
+        - $ref: '#/components/schemas/Apartment'
+        - type: object
+          properties:
+            average_rating:
+              type: number
+              format: float
+              nullable: true
+            reviews_count:
+              type: integer
+            owner:
+              $ref: '#/components/schemas/UserPublic'
 
-  /users/{id}:
-    get:
-      tags: [Users]
-      summary: Get user by ID (working)
-      operationId: getUserById
-      parameters:
-        - $ref: '#/components/parameters/IdParam'
-      responses:
-        '200':
-          description: User details
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-        '404':
-          description: User not found
-    put:
-      tags: [Users]
-      summary: Update user
-      operationId: updateUser
-      parameters:
-        - $ref: '#/components/parameters/IdParam'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UserUpdate'
-      responses:
-        '200':
-          description: User updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-        '400':
-          description: Invalid input
-        '404':
-          description: User not found
-    delete:
-      tags: [Users]
-      summary: Delete user
-      operationId: deleteUser
-      parameters:
-        - $ref: '#/components/parameters/IdParam'
-      responses:
-        '204':
-          description: User deleted successfully
-        '404':
-          description: User not found
+    Booking:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        apartment_id:
+          type: integer
+          format: int64
+        user_id:
+          type: integer
+          format: int64
+        time_from:
+          type: string
+          format: date-time
+        time_to:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [waiting, confirmed, cancelled, rejected, completed]
+        price_per_hour:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
 
-  # Apartments
-  /apartments:
-    get:
-      tags: [Apartments]
-      summary: List all apartments
-      operationId: listApartments
-      parameters:
-        - $ref: '#/components/parameters/PageParam'
-        - $ref: '#/components/parameters/LimitParam'
-        - name: city
-          in: query
-          schema:
-            type: string
-          description: Filter by city
-        - name: min_price
-          in: query
-          schema:
-            type: number
-        - name: max_price
-          in: query
-          schema:
-            type: number
-        - name: bedrooms
-          in: query
-          schema:
-            type: integer
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum: [active, inactive, maintenance]
-      responses:
-        '200':
-          description: List of apartments
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  apartments:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Apartment'
-                  total:
-                    type: integer
-    post:
-      tags: [Apartments]
-      summary: Create a new apartment
-      operationId: createApartment
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ApartmentCreate'
-      responses:
-        '201':
-          description: Apartment created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Apartment'
-        '400':
-          description: Invalid input
+    Review:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        apartment_id:
+          type: integer
+          format: int64
+        user_id:
+          type: integer
+          format: int64
+        stars:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+        created_at:
+          type: string
+          format: date-time
 
-  /apartments/{id}:
-    get:
-      tags: [Apartments]
-      summary: Get apartment by ID
-      operationId: getApartmentById
-      parameters:
-        - $ref: '#/components/parameters/IdParam'
-      responses:
-        '200':
-          description: Apartment details
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Apartment'
-        '404':
-          description: Apartment not found
-    put:
-      tags: [Apartments]
-      summary: Update apartment (UpdateApartment added Jun 11, 2026)
-      operationId: updateApartment
-      parameters:
-        - $ref: '#/components/parameters/IdParam'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ApartmentCreate'
-      responses:
-        '200':
-          description: Apartment updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Apartment'
-        '400':
-          description: Invalid input
-        '404':
-          description: Apartment not found
-    delete:
-      tags: [Apartments]
-      summary: Delete apartment
-      operationId: deleteApartment
-      parameters:
-        - $ref: '#/components/parameters/IdParam'
-      responses:
-        '204':
-          description: Apartment deleted
-        '404':
-          description: Apartment not found
-
-  # Bookings
-  /bookings:
-    get:
-      tags: [Bookings]
-      summary: List bookings (with optional filters)
-      operationId: listBookings
-      parameters:
-        - $ref: '#/components/parameters/PageParam'
-        - $ref: '#/components/parameters/LimitParam'
-        - name: user_id
-          in: query
-          schema:
-            type: integer
-          description: Filter by user
-        - name: apartment_id
-          in: query
-          schema:
-            type: integer
-        - name: status
-          in: query
-          schema:
-            type: string
-        - name: from_date
-          in: query
-          schema:
-            type: string
-            format: date
-        - name: to_date
-          in: query
-          schema:
-            type: string
-            format: date
-      responses:
-        '200':
-          description: List of bookings
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  bookings:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Booking'
-                  total:
-                    type: integer
-    post:
-      tags: [Bookings]
-      summary: Create a new booking
-      operationId: createBooking
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/BookingCreate'
-      responses:
-        '201':
-          description: Booking created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Booking'
-        '400':
-          description: Invalid input (e.g., dates overlap)
-
-  /bookings/{id}:
-    get:
-      tags: [Bookings]
-      summary: Get booking by ID
-      operationId: getBookingById
-      parameters:
-        - $ref: '#/components/parameters/IdParam'
-      responses:
-        '200':
-          description: Booking details
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Booking'
-        '404':
-          description: Booking not found
-    put:
-      tags: [Bookings]
-      summary: Update booking (e.g., change dates)
-      operationId: updateBooking
-      parameters:
-        - $ref: '#/components/parameters/IdParam'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                check_in_date:
-                  type: string
-                  format: date
-                check_out_date:
-                  type: string
-                  format: date
-                guests_count:
-                  type: integer
-                special_requests:
-                  type: string
-      responses:
-        '200':
-          description: Booking updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Booking'
-        '400':
-          description: Invalid input
-        '404':
-          description: Booking not found
-    delete:
-      tags: [Bookings]
-      summary: Cancel booking
-      operationId: cancelBooking
-      parameters:
-        - $ref: '#/components/parameters/IdParam'
-      responses:
-        '204':
-          description: Booking cancelled
-        '404':
-          description: Booking not found
-
-  # Payments
-  /payments:
-    get:
-      tags: [Payments]
-      summary: List payments
-      operationId: listPayments
-      parameters:
-        - $ref: '#/components/parameters/PageParam'
-        - $ref: '#/components/parameters/LimitParam'
-        - name: booking_id
-          in: query
-          schema:
-            type: integer
-        - name: user_id
-          in: query
-          schema:
-            type: integer
-        - name: status
-          in: query
-          schema:
-            type: string
-      responses:
-        '200':
-          description: List of payments
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  payments:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Payment'
-                  total:
-                    type: integer
-    post:
-      tags: [Payments]
-      summary: Process a payment for a booking
-      operationId: createPayment
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [booking_id, amount, payment_method]
-              properties:
-                booking_id:
-                  type: integer
-                amount:
-                  type: number
-                payment_method:
-                  type: string
-                  enum: [credit_card, paypal, bank_transfer]
-                currency:
-                  type: string
-                  default: "USD"
-      responses:
-        '201':
-          description: Payment processed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Payment'
-        '400':
-          description: Invalid payment details
-
-  /payments/{id}:
-    get:
-      tags: [Payments]
-      summary: Get payment by ID
-      operationId: getPaymentById
-      parameters:
-        - $ref: '#/components/parameters/IdParam'
-      responses:
-        '200':
-          description: Payment details
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Payment'
-        '404':
-          description: Payment not found
-
-  # Reviews
-  /reviews:
-    get:
-      tags: [Reviews]
-      summary: List reviews
-      operationId: listReviews
-      parameters:
-        - $ref: '#/components/parameters/PageParam'
-        - $ref: '#/components/parameters/LimitParam'
-        - name: apartment_id
-          in: query
-          schema:
-            type: integer
-        - name: user_id
-          in: query
-          schema:
-            type: integer
-        - name: min_rating
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 5
-      responses:
-        '200':
-          description: List of reviews
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  reviews:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Review'
-                  average_rating:
-                    type: number
-                    format: float
-                  total:
-                    type: integer
-    post:
-      tags: [Reviews]
-      summary: Create a review for an apartment
-      operationId: createReview
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [apartment_id, booking_id, rating]
-              properties:
-                apartment_id:
-                  type: integer
-                booking_id:
-                  type: integer
-                rating:
-                  type: integer
-                  minimum: 1
-                  maximum: 5
-                comment:
-                  type: string
-      responses:
-        '201':
-          description: Review created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Review'
-        '400':
-          description: Invalid input (e.g., duplicate review)
-
-  /reviews/{id}:
-    get:
-      tags: [Reviews]
-      summary: Get review by ID
-      operationId: getReviewById
-      parameters:
-        - $ref: '#/components/parameters/IdParam'
-      responses:
-        '200':
-          description: Review details
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Review'
-        '404':
-          description: Review not found
-    delete:
-      tags: [Reviews]
-      summary: Delete review
-      operationId: deleteReview
-      parameters:
-        - $ref: '#/components/parameters/IdParam'
-      responses:
-        '204':
-          description: Review deleted
-        '404':
-          description: Review not found
-
-  # Statuses (from commit "newap" and statuses branch)
-  /statuses:
-    get:
-      tags: [Statuses]
-      summary: Get status history for an entity
-      operationId: listStatuses
-      parameters:
-        - name: entity_type
-          in: query
-          required: true
-          schema:
-            type: string
-            enum: [booking, apartment, payment]
-        - name: entity_id
-          in: query
-          required: true
-          schema:
-            type: integer
-        - $ref: '#/components/parameters/PageParam'
-        - $ref: '#/components/parameters/LimitParam'
-      responses:
-        '200':
-          description: Status history
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  statuses:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Status'
-                  total:
-                    type: integer
-    post:
-      tags: [Statuses]
-      summary: Update status of an entity
-      operationId: updateStatus
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [entity_type, entity_id, status]
-              properties:
-                entity_type:
-                  type: string
-                  enum: [booking, apartment, payment]
-                entity_id:
-                  type: integer
-                status:
-                  type: string
-                notes:
-                  type: string
-      responses:
-        '201':
-          description: Status updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Status'
-        '400':
-          description: Invalid status transition
-        '404':
-          description: Entity not found
-
-security:
-  - BearerAuth: []   # Once JWT is implemented, uncomment this
-
-# Global responses
-responses:
-  UnauthorizedError:
-    description: Authentication information is missing or invalid
-    content:
-      application/json:
-        schema:
-          $ref: '#/components/schemas/Error'
-        example:
-          error: "Unauthorized"
-          message: "Missing or invalid JWT token"
-          status_code: 401
-  ForbiddenError:
-    description: User does not have permission
-    content:
-      application/json:
-        schema:
-          $ref: '#/components/schemas/Error'
-  NotFoundError:
-    description: Resource not found
-    content:
-      application/json:
-        schema:
-          $ref: '#/components/schemas/Error'
-  ValidationError:
-    description: Request validation failed
-    content:
-      application/json:
-        schema:
-          $ref: '#/components/schemas/Error'
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Ошибка валидации
+        message:
+          type: string
